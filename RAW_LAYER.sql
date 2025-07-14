@@ -1,10 +1,13 @@
+USE TheDataGuyzPractice;
+GO
+
 IF OBJECT_ID('RAW_LAYER.BATCH_EXTRACT', 'U') IS NOT NULL
     DROP TABLE RAW_LAYER.BATCH_EXTRACT;
 GO
 
 CREATE TABLE RAW_LAYER.BATCH_EXTRACT (
     batch_id INT,
-    extraction_date DATE,
+    extraction_date DATETIME,
     json_data NVARCHAR(MAX)
 );
 
@@ -16,15 +19,16 @@ CREATE TABLE RAW_LAYER.ENTITY_EXTRACT (
     batch_id INT,
     entity_event_id INT,
     entity_id INT,
-    extraction_date DATE,
+    extraction_date DATETIME,
     entity_type NVARCHAR(50),
     entity_json_data NVARCHAR(MAX)
 );
 
+TRUNCATE TABLE RAW_LAYER.BATCH_EXTRACT;
 INSERT INTO RAW_LAYER.BATCH_EXTRACT (batch_id, extraction_date, json_data)
 VALUES 
 -- Batch 1
-(1, '2025-07-07', 
+(1, '2025-07-07 10:00:01', 
 N'{
   "batch_id": 1,
   "batch_data": [
@@ -36,7 +40,7 @@ N'{
 }'),
 
 -- Batch 2
-(2, '2025-07-07', 
+(2, '2025-07-07 10:00:02', 
 N'{
   "batch_id": 2,
   "batch_data": [
@@ -48,7 +52,7 @@ N'{
 }'),
 
 -- Batch 3
-(3, '2025-07-07', 
+(3, '2025-07-07 10:00:03', 
 N'{
   "batch_id": 3,
   "batch_data": [
@@ -56,10 +60,12 @@ N'{
     { "entity_id": 1006, "entity_type": "customer", "entity": { "first_name": "Nathan", "last_name": "Chan", "gender": "M" } },
     { "entity_id": 2002, "entity_type": "product",  "entity": { "product_name": "banana", "unit_price": 1 } }
   ]
-}'),
+}');
 
+INSERT INTO RAW_LAYER.BATCH_EXTRACT (batch_id, extraction_date, json_data)
+VALUES 
 -- Batch 4
-(4, '2025-07-07', 
+(4, '2025-07-07 10:00:04', 
 N'{
   "batch_id": 4,
   "batch_data": [

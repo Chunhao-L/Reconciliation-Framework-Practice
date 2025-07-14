@@ -1,3 +1,6 @@
+USE TheDataGuyzPractice;
+GO
+
 IF OBJECT_ID('STG_LAYER.CUSTOMERS', 'U') IS NOT NULL
     DROP TABLE STG_LAYER.CUSTOMERS;
 GO
@@ -7,7 +10,8 @@ CREATE TABLE STG_LAYER.CUSTOMERS (
     entity_event_id INT,
     customer_id INT,
     fname NVARCHAR(50),
-    lname NVARCHAR(50)
+    lname NVARCHAR(50),
+    gender NVARCHAR(1)
 );
 
 
@@ -23,6 +27,7 @@ CREATE TABLE STG_LAYER.PRODUCTS (
     unit_price INT
 );
 
+/*
 INSERT INTO STG_LAYER.CUSTOMERS (
     batch_id, entity_event_id, customer_id, fname, lname
 )
@@ -42,6 +47,6 @@ VALUES
 (2, 6, 2003, N'orange', 3),
 (2, 7, 2001, N'apple',  2),
 (3,11, 2002, N'banana', 1);
-
+*/
 select * from STG_LAYER.CUSTOMERS;
 select * from STG_LAYER.PRODUCTS;
