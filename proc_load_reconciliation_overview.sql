@@ -4,10 +4,8 @@ GO
 CREATE OR ALTER PROCEDURE AUDITING.LOAD_RECONCILIATION_OVERVIEW AS
 BEGIN
 	DECLARE
-		@proc_start_time DATETIME, 
+		@proc_start_time DATETIME = GETDATE(), 
         @proc_end_time DATETIME,
-        @start_time DATETIME, 
-        @end_time DATETIME, 
         @max_audit_id INT = ISNULL(
             (SELECT MAX(audit_id) FROM AUDITING.RECONCILIATION_OVERVIEW),
             0
@@ -36,6 +34,7 @@ BEGIN
         @raw_product_records_count INT = (SELECT COUNT(DISTINCT RAW_LAYER.ENTITY_EXTRACT.entity_event_id)
                                           FROM RAW_LAYER.ENTITY_EXTRACT
                                           WHERE entity_type = 'product')
+
         INSERT INTO AUDITING.RECONCILIATION_OVERVIEW (
             audit_id,
             audit_job_id,
@@ -102,7 +101,8 @@ BEGIN
             END,
             @raw_product_records_count - @product_records_count
         );
-           
+        SET @proc_end_time = GETDATE();
+        PRINT '>> Proc total Duration: ' + CAST(DATEDIFF(second, @proc_start_time, @proc_end_time) AS NVARCHAR) + ' seconds';   
 END;
 
 EXEC AUDITING.LOAD_RECONCILIATION_OVERVIEW;
