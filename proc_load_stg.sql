@@ -36,8 +36,8 @@ BEGIN
         JSON_VALUE(entity_json_data, '$.last_name') AS last_name,
         JSON_VALUE(entity_json_data, '$.gender') AS gender
     FROM RAW_LAYER.ENTITY_EXTRACT
-    WHERE 1 = 1 
-        AND entity_type = 'customer' 
+    WHERE 
+        entity_type = 'customer' 
         AND batch_id > @max_customer_batch_id;
     SET @end_time = GETDATE();
 	PRINT '>> Load Duration: ' + CAST(DATEDIFF(second, @start_time, @end_time) AS NVARCHAR) + ' seconds';
@@ -59,8 +59,8 @@ BEGIN
         JSON_VALUE(entity_json_data, '$.product_name') AS product_name,
         JSON_VALUE(entity_json_data, '$.unit_price') AS unit_price
     FROM RAW_LAYER.ENTITY_EXTRACT
-    WHERE 1 = 1 
-        AND entity_type = 'product'
+    WHERE 
+        entity_type = 'product'
         AND batch_id > @max_products_batch_id;
     SET @end_time = GETDATE();
 	PRINT '>> Load Duration: ' + CAST(DATEDIFF(second, @start_time, @end_time) AS NVARCHAR) + ' seconds';
@@ -73,3 +73,6 @@ TRUNCATE TABLE STG_LAYER.PRODUCTS;
 EXEC STG_LAYER.LOAD_STG_CUSTOMERS_AND_PRODUCTS;
 SELECT * FROM STG_LAYER.CUSTOMERS;
 SELECT * FROM STG_LAYER.PRODUCTS;
+
+DELETE FROM STG_LAYER.CUSTOMERS WHERE entity_event_id = 12;
+DELETE FROM STG_LAYER.PRODUCTS WHERE entity_event_id = 17;

@@ -1,48 +1,75 @@
 USE TheDataGuyzPractice;
 GO
 
-CREATE OR ALTER PROCEDURE AUDITING.LOAD_RECONCILIATION_OVERVIEW AS
+CREATE OR ALTER PROCEDURE AUDITING.LOAD_RECONCILIATION_OVERVIEW
+AS
 BEGIN
-	DECLARE
-		@proc_start_time DATETIME = GETDATE(), 
+
+    DECLARE 
+        @proc_start_time DATETIME = GETDATE(),
         @proc_end_time DATETIME,
-        @max_audit_id INT = ISNULL(
-            (SELECT MAX(audit_id) FROM AUDITING.RECONCILIATION_OVERVIEW),
-            0
-        ),
-        @max_audit_job_id INT = ISNULL(
-            (SELECT MAX(audit_job_id) FROM AUDITING.RECONCILIATION_OVERVIEW),
-            0
-        ),
-        @customer_batchs_count INT = (SELECT COUNT(DISTINCT STG_LAYER.CUSTOMERS.batch_id) 
-                                      FROM STG_LAYER.CUSTOMERS),
-        @customer_records_count INT = (SELECT COUNT(STG_LAYER.CUSTOMERS.entity_event_id)
-                                       FROM STG_LAYER.CUSTOMERS),
-        @product_batchs_count INT = (SELECT COUNT(DISTINCT STG_LAYER.PRODUCTS.batch_id)
-                                     FROM STG_LAYER.PRODUCTS),
-        @product_records_count INT = (SELECT COUNT(STG_LAYER.PRODUCTS.entity_event_id)
-                                      FROM STG_LAYER.PRODUCTS),
-        @raw_customer_batchs_count INT = (SELECT COUNT(DISTINCT RAW_LAYER.ENTITY_EXTRACT.batch_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'customer'),
-        @raw_customer_records_count INT = (SELECT COUNT(RAW_LAYER.ENTITY_EXTRACT.entity_event_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'customer'),
-        @raw_product_batchs_count INT = (SELECT COUNT(DISTINCT RAW_LAYER.ENTITY_EXTRACT.batch_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'product'),
-        @raw_product_records_count INT = (SELECT COUNT(DISTINCT RAW_LAYER.ENTITY_EXTRACT.entity_event_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'product')
+        @max_audit_id INT = ISNULL((SELECT MAX(audit_id) FROM AUDITING.RECONCILIATION_OVERVIEW), 0),
+        @max_audit_job_id INT = ISNULL((SELECT MAX(audit_job_id) FROM AUDITING.RECONCILIATION_OVERVIEW), 0),
+        @load_phase NVARCHAR(50),
+        @source_schema NVARCHAR(50),
+        @source_object NVARCHAR(50),
+        @source_column NVARCHAR(50),
+        @filter_query NVARCHAR(MAX),
+        @target_schema NVARCHAR(50),
+        @target_object NVARCHAR(50),
+        @target_column NVARCHAR(50),
+        @raw_batch_count INT,
+        @stg_batch_count INT,
+        @raw_record_count INT,
+        @stg_record_count INT,
+        @sql NVARCHAR(MAX),
+        @row_offset INT = 1;
+
+    DECLARE ref_cursor CURSOR FOR
+        SELECT DISTINCT 
+            load_phase, source_schema, source_object, source_column,
+            filter_query, target_schema, target_object, target_column
+        FROM AUDITING.RECONCILIATION_REFERENCE
+        WHERE source_column = 'entity_event_id';
+
+    SET @proc_start_time = GETDATE();
+    PRINT '>> Starting the reconciliation overview procedure.';
+    OPEN ref_cursor;
+    FETCH NEXT FROM ref_cursor INTO 
+        @load_phase, @source_schema, @source_object, @source_column,
+        @filter_query, @target_schema, @target_object, @target_column;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @sql = '
+            SELECT 
+                @raw_batch_count_out = COUNT(DISTINCT batch_id),
+                @raw_record_count_out = COUNT(' + QUOTENAME(@source_column) + ')
+            FROM ' + QUOTENAME(@source_schema) + '.' + QUOTENAME(@source_object) + '
+            WHERE ' + @filter_query + ';';
+
+        EXEC sp_executesql @sql,
+            N'@raw_batch_count_out INT OUTPUT, @raw_record_count_out INT OUTPUT',
+            @raw_batch_count OUTPUT, @raw_record_count OUTPUT;
+
+        SET @sql = '
+            SELECT 
+                @stg_batch_count_out = COUNT(DISTINCT batch_id),
+                @stg_record_count_out = COUNT(' + QUOTENAME(@target_column) + ')
+            FROM ' + QUOTENAME(@target_schema) + '.' + QUOTENAME(@target_object) + ';';
+
+        EXEC sp_executesql @sql,
+            N'@stg_batch_count_out INT OUTPUT, @stg_record_count_out INT OUTPUT',
+            @stg_batch_count OUTPUT, @stg_record_count OUTPUT;
 
         INSERT INTO AUDITING.RECONCILIATION_OVERVIEW (
             audit_id,
             audit_job_id,
             load_phase,
             source_object,
-	        source_column,
+            source_column,
             target_object,
-	        target_column,
+            target_column,
             raw_batch_id_count,
             stg_batch_id_count,
             batch_id_audit_result,
@@ -52,58 +79,39 @@ BEGIN
             records_audit_result,
             records_audit_difference
         )
-        VALUES
-        (   @max_audit_id+1, 
-            @max_audit_job_id+1, 
-            'RAW to STG', 
-            'RAW_LAYER.ENTITY_EXTRACT',
-            'entity_event_id',
-            'STG_LAYER.CUSTOMERS',
-            'entity_event_id',
-            @raw_customer_batchs_count,
-            @customer_batchs_count,
-            CASE 
-                WHEN @raw_customer_batchs_count = @customer_batchs_count
-                THEN 'Match'
-                ELSE 'Mismatch'
-            END,
-            @raw_customer_batchs_count - @customer_batchs_count,
-            @raw_customer_records_count,
-            @customer_records_count,
-            CASE 
-                WHEN @raw_customer_records_count = @customer_records_count
-                THEN 'Match'
-                ELSE 'Mismatch'
-            END,
-            @raw_customer_records_count - @customer_records_count
-        ),
-        (   @max_audit_id+2, 
-            @max_audit_job_id+1, 
-            'RAW to STG', 
-            'RAW_LAYER.ENTITY_EXTRACT',
-            'entity_event_id',
-            'STG_LAYER.PRODUCTS',
-            'entity_event_id',
-            @raw_product_batchs_count,
-            @product_batchs_count,
-            CASE 
-                WHEN @raw_product_batchs_count = @product_batchs_count
-                THEN 'Match'
-                ELSE 'Mismatch'
-            END,
-            @raw_product_batchs_count - @product_batchs_count,
-            @raw_product_records_count,
-            @product_records_count,
-            CASE 
-                WHEN @raw_product_records_count = @product_records_count
-                THEN 'Match'
-                ELSE 'Mismatch'
-            END,
-            @raw_product_records_count - @product_records_count
+        VALUES (
+            @max_audit_id + @row_offset,
+            @max_audit_job_id + 1,
+            @load_phase,
+            @source_schema + '.' + @source_object,
+            @source_column,
+            @target_schema + '.' + @target_object,
+            @target_column,
+            @raw_batch_count,
+            @stg_batch_count,
+            CASE WHEN @raw_batch_count = @stg_batch_count THEN 'Match' ELSE 'Mismatch' END,
+            @raw_batch_count - @stg_batch_count,
+            @raw_record_count,
+            @stg_record_count,
+            CASE WHEN @raw_record_count = @stg_record_count THEN 'Match' ELSE 'Mismatch' END,
+            @raw_record_count - @stg_record_count
         );
-        SET @proc_end_time = GETDATE();
-        PRINT '>> Proc total Duration: ' + CAST(DATEDIFF(second, @proc_start_time, @proc_end_time) AS NVARCHAR) + ' seconds';   
+
+        SET @row_offset += 1;
+
+        FETCH NEXT FROM ref_cursor INTO 
+            @load_phase, @source_schema, @source_object, @source_column,
+            @filter_query, @target_schema, @target_object, @target_column;
+    END;
+
+    CLOSE ref_cursor;
+    DEALLOCATE ref_cursor;
+
+    SET @proc_end_time = GETDATE();
+    PRINT '>> Proc total Duration: ' + CAST(DATEDIFF(SECOND, @proc_start_time, @proc_end_time) AS NVARCHAR) + ' seconds';
 END;
 
+
+TRUNCATE TABLE AUDITING.RECONCILIATION_OVERVIEW;
 EXEC AUDITING.LOAD_RECONCILIATION_OVERVIEW;
 SELECT * FROM AUDITING.RECONCILIATION_OVERVIEW;

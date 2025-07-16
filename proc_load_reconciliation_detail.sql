@@ -14,50 +14,85 @@ BEGIN
             (SELECT MAX(audit_job_id) FROM AUDITING.RECONCILIATION_DETAIL),
             0
         ),
-        @customer_records_count INT = (SELECT COUNT(STG_LAYER.CUSTOMERS.entity_event_id)
-                                       FROM STG_LAYER.CUSTOMERS),
-        @product_records_count INT = (SELECT COUNT(STG_LAYER.PRODUCTS.entity_event_id)
-                                      FROM STG_LAYER.PRODUCTS),
-        @raw_customer_records_count INT = (SELECT COUNT(RAW_LAYER.ENTITY_EXTRACT.entity_event_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'customer'),
-        @raw_product_records_count INT = (SELECT COUNT(DISTINCT RAW_LAYER.ENTITY_EXTRACT.entity_event_id)
-                                          FROM RAW_LAYER.ENTITY_EXTRACT
-                                          WHERE entity_type = 'product')
-    IF @customer_records_count <> @raw_customer_records_count 
-        INSERT INTO AUDITING.RECONCILIATION_DETAIL (
-	        audit_id,
-	        audit_job_id,
-	        load_phase,
-            batch_id ,
-            source_object,
-	        source_column,
-	        source_value,
-            target_object,
-	        target_column,
-	        target_value,
-	        audit_result
-        )
-        SELECT 
-            @max_audit_id + ROW_NUMBER() OVER (ORDER BY (SELECT 1)),
-            @max_audit_job_id + 1,
-            'RAW to STG',
-            RAW_LAYER.ENTITY_EXTRACT.batch_id,
-            'RAW_LAYER.ENTITY_EXTRACT',
-            'entity_event_id',
-            RAW_LAYER.ENTITY_EXTRACT.entity_event_id,
-            'STG_LAYER.CUSTOMERS',
-            'entity_event_id',
-            STG_LAYER.CUSTOMERS.entity_event_id,
-            'Missing'
-        FROM
-            RAW_LAYER.ENTITY_EXTRACT 
-            LEFT JOIN STG_LAYER.CUSTOMERS
-            ON RAW_LAYER.ENTITY_EXTRACT.entity_event_id = STG_LAYER.CUSTOMERS.entity_event_id
-        WHERE 
-            RAW_LAYER.ENTITY_EXTRACT.entity_type = 'customer'
-            AND STG_LAYER.CUSTOMERS.customer_id IS NULL;
+        @filter_query NVARCHAR(50),
+        @load_phase nvarchar(50),
+        @source_schema NVARCHAR(50),
+        @source_table NVARCHAR(50),
+        @source_id_column   VARCHAR(50),
+        @target_schema NVARCHAR(50),
+        @target_table       VARCHAR(50),
+        @target_id_column   VARCHAR(50),
+        @sql             NVARCHAR(MAX);
+        DECLARE metadata_cursor CURSOR FOR
+            SELECT 
+                filter_query,
+                load_phase,
+                source_schema,
+                source_object,
+                source_column,
+                target_schema,
+                target_object,
+                target_column
+            FROM
+                AUDITING.RECONCILIATION_REFERENCE
+            WHERE 
+                source_column = 'entity_event_id';
+
+        OPEN metadata_cursor;
+
+        FETCH NEXT FROM metadata_cursor
+        INTO @filter_query, @load_phase, @source_schema, @source_table, @source_id_column, @target_schema, @target_table, @target_id_column;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @sql = '
+                INSERT INTO AUDITING.RECONCILIATION_DETAIL (
+	                audit_id,
+	                audit_job_id,
+	                load_phase,
+                    batch_id ,
+                    source_object,
+	                source_column,
+	                source_value,
+                    target_object,
+	                target_column,
+	                target_value,
+	                audit_result
+                )
+                SELECT 
+                    ' + CAST(@max_audit_id AS NVARCHAR) + '+ ROW_NUMBER() OVER (ORDER BY (SELECT 1)),
+                    ' + CAST(@max_audit_job_id AS NVARCHAR) +' + 1,
+                    '''+ @load_phase + ''',
+                    ' + QUOTENAME(@source_schema) + '.' + QUOTENAME(@source_table) + '.batch_id,
+                    ''' + @source_table + ''',
+                    ''' + @source_id_column +''',
+                    ' + QUOTENAME(@source_schema) + '.' + QUOTENAME(@source_table) + '.entity_event_id,
+                    ''' + @target_table +''',
+                    ''' + @target_id_column + ''',
+                    ' + QUOTENAME(@target_schema) + '.' + QUOTENAME(@target_table) + '.entity_event_id,
+                    ''Missing in target table''
+                FROM
+                    ' + QUOTENAME(@source_schema) + '.' + QUOTENAME(@source_table) + ' 
+                    LEFT JOIN ' + QUOTENAME(@target_schema) + '.' + QUOTENAME(@target_table) + ' 
+                    ON '+ QUOTENAME(@source_schema) + '.' + QUOTENAME(@source_table)  + '.' + QUOTENAME(@source_id_column) 
+                    + ' = ' + QUOTENAME(@target_schema) + '.' + QUOTENAME(@target_table)  + '.' + QUOTENAME(@target_id_column) + ' 
+                WHERE 
+                    ' + @filter_query + '
+                    AND '+ QUOTENAME(@target_schema) + '.' + QUOTENAME(@target_table)  + '.' + QUOTENAME(@target_id_column) + ' IS NULL;
+            ';
+
+            EXEC sp_executesql @sql;
+
+            FETCH NEXT FROM metadata_cursor
+            INTO @filter_query, @load_phase, @source_schema, @source_table, @source_id_column, @target_schema, @target_table, @target_id_column;
+
+        END;
+            
+        CLOSE metadata_cursor;
+        DEALLOCATE metadata_cursor;
+
 END;
 
+TRUNCATE TABLE AUDITING.RECONCILIATION_DETAIL;
 EXEC AUDITING.LOAD_RECONCILIATION_DETAIL;
 SELECT * FROM AUDITING.RECONCILIATION_DETAIL;

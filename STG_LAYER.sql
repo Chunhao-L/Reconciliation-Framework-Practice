@@ -48,5 +48,6 @@ VALUES
 (2, 7, 2001, N'apple',  2),
 (3,11, 2002, N'banana', 1);
 */
+DELETE FROM STG_LAYER.CUSTOMERS WHERE entity_event_id = 10;
 select * from STG_LAYER.CUSTOMERS;
 select * from STG_LAYER.PRODUCTS;
