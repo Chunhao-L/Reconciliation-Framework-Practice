@@ -3,7 +3,7 @@
 Purpose:
 --------
 This script creates the **AUDITING layer** tables used for data reconciliation between different layers
-of the data pipeline — specifically from RAW to STG. The reconciliation helps ensure that records
+of the data pipeline â€” specifically from RAW to STG. The reconciliation helps ensure that records
 have been correctly transferred, transformed, and loaded.
 
 The script creates the following tables:
